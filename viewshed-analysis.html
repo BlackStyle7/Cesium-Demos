@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta content="text/html; charset=utf-8" http-equiv="content-type">
+		<style>
+			html body { height: 100%; margin: 0; overflow: hidden; }
+			.container { position: absolute; width: 100%; height: 100%; }
+		</style>
+		<link rel="stylesheet" type="text/css" href="./js/Cesium-1.93/Build/Cesium/Widgets/widgets.css" />
+		<script src="./js/Cesium-1.93/Build/Cesium/Cesium.js"></script>
+	</head>
+	<body>
+		<div class="container"></div>
+		<script type="module">
+			import initTestCesium from './js/initTestCesium.js';
+			import Viewshed from './js/expands/Viewshed.js';
+
+			const container = document.getElementsByClassName( 'container' )[ 0 ];
+			window.viewer = initTestCesium( container );
+
+			// 显示帧率
+			viewer.scene.debugShowFramesPerSecond = true;
+			// 抗锯齿
+			viewer.postProcessStages.fxaa.enabled = true;
+			viewer.scene.globe.depthTestAgainstTerrain = true;
+			// 开启阴影贴图
+			viewer.shadowMap.enabled = true;
+
+			// 鼠标拾取点位相关
+			const eventHandler = new Cesium.ScreenSpaceEventHandler( container );
+			eventHandler.setInputAction( e => {
+				const { position } = e;
+
+				const cartesian = viewer.scene.pickPosition( position );
+				if ( !cartesian ) return;
+
+				const cartographic = new Cesium.Cartographic();
+				Cesium.Cartographic.fromCartesian( cartesian, Cesium.Ellipsoid.WGS84, cartographic );
+				cartographic.longitude *= 180.0 / Math.PI;
+				cartographic.latitude *= 180.0 / Math.PI;
+
+				console.log( cartesian, cartographic );
+			}, Cesium.ScreenSpaceEventType.LEFT_CLICK );
+
+			// 飞到珠峰
+			viewer.camera.flyTo( {
+				destination: new Cesium.Cartesian3( -2182240.151834887, 4390009.309539444, 4066673.56949234 ),
+				orientation: {
+					heading: 6.230718563236456,
+					pitch: -0.5339946346090603,
+					roll: 0.000004092825143686696,
+				},
+			} );
+
+			viewer.entities.add( new Cesium.Entity( {
+				polygon: new Cesium.PolygonGraphics( {
+					hierarchy: new Cesium.PolygonHierarchy( Cesium.Cartesian3.fromDegreesArrayHeights( [
+							116.43223708198722,	39.86864960587005,	33.60730201230560,
+							116.43213773462453,	39.86796775452591,	51.54894417685323,
+							116.43304755217370,	39.86786741902903,	34.55568057999458,
+							116.43335697085442,	39.86859321778193,	28.30752846362601,
+					] ) ),
+				} ),
+			} ) );
+
+
+			window.viewshed = new Viewshed( viewer, {
+				center: new Cesium.Cartesian3( -2181978.9050992643, 4389808.853555092, 4066834.8930986333 ),  // 中心处
+				finish: new Cesium.Cartesian3( -2182124.3580587070, 4389690.005496633, 4066801.3722747406 ),  // 结束处
+				radius: 160,  // 最大能见距离，如果未指定，将内置为 起点-终点
+				hAngle: 120.0 * Math.PI / 180, vAngle:  60.0 * Math.PI / 180,  // 水平竖直角
+				hMeshGrid: 23, vMeshGrid: 23,  // 视网面水平竖直方向切分个数
+				hLineGrid: 10, vLineGrid: 10,  // 视网线水平竖直方向切分个数
+				visibleColor: new Cesium.Color( 0.0, 1.0, 0.0, 1.0 ),  // 可视区域颜色
+				invisibleColor: new Cesium.Color( 1.0, 0.0, 0.0, 1.0 ),  // 不可视区域颜色
+				alpha: 0.8,  // 投影区域透明度
+				lineColor: new Cesium.Color( 0.0, 1.0, 0.0, 1.0 ),  // 视锥线颜色
+			} );
+			viewer.scene.primitives.add( viewshed );
+			
+		</script>
+	</body>
+</html>
