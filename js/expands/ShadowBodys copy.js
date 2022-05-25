@@ -18,8 +18,6 @@ const ShadowBodys = class {
 		this.positionHighBuffer = this.initVertexBuffer();
 		this.positionLowBuffer  = this.initVertexBuffer();
 
-		this.vertexArray = this.initVertexArray( indices );
-
 		this.modelMatrix = Cesium.Matrix4.clone( Cesium.Matrix4.IDENTITY, new Cesium.Matrix4() );
 
 		this.drawCommand = this.initDrawCommand( indices );
@@ -130,7 +128,7 @@ const ShadowBodys = class {
 
 		const drawCommand = new Cesium.DrawCommand( {
 			owner: this,
-			vertexArray: this.vertexArray,
+			vertexArray: this.initVertexArray( indices ),
 			uniformMap: {
 				visibleColor: () => this.visibleColor,
 				invisibleColor: () => this.invisibleColor,
