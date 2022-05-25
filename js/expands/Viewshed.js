@@ -1,4 +1,6 @@
 import FrustumVertex from './FrustumVertex.js';
+import FrustumLine from './FrustumLine.js';
+import ShadowBodys from './ShadowBodys.js';
 
 const toDegree = 180 / Math.PI;
 const toRadian = Math.PI / 180;
@@ -7,9 +9,10 @@ const PI2 = Math.PI * 2;
 /**
  * 视域分析类
  */
-const Viewshed = class {
+const Viewshed = class extends Cesium.PrimitiveCollection {
 
 	constructor( viewer, option = {} ) {
+		super();
 
 		// 需要对 viewer 进行操作，故需要 viewer 环境
 		this.viewer = viewer;
@@ -45,144 +48,174 @@ const Viewshed = class {
 		this.lineColor = option.lineColor || new Cesium.Color( 0.0, 1.0, 0.0, 1.0 );
 
 		/** 子功能模块 */
+
+		// 初始化视锥顶点计算器，并计算顶点索引
 		this.frustumVertex = new FrustumVertex();
-		this.computeVertex();
+		this.frustumVertex.computeIndices( this.hMeshGrid, this.vMeshGrid, this.hLineGrid, this.vLineGrid );
+
+		// 初始化视锥线和阴影体的维护对象，并初始化顶点索引
+		// 因为在索引的组织结构不变的情况下，顶点个数是不会发生改变的，避免了缓冲区超限
+		this.shadowBodys = this.add( new ShadowBodys( viewer, {
+			hGrid: this.hMeshGrid,
+			vGrid: this.vMeshGrid,
+			visibleColor: this.visibleColor, invisibleColor: this.invisibleColor,
+			indices: this.frustumVertex.getMeshIndices(),
+		} ) );
+		this.frustumLine = this.add( new FrustumLine( viewer, {
+			hGrid: this.hLineGrid,
+			vGrid: this.vLineGrid,
+			color: this.lineColor,
+			indices: this.frustumVertex.getLineIndices(),
+		} ) );
+
+		// 计算并更新顶点坐标
+		this.updateVertices();
 
 		this.color = new Cesium.Color( 0.5, 0.5, 1.0, 1.0 );
 
 		// 在这里先创建一个绘图指令
 
-		const positionHighBuffer = Cesium.Buffer.createVertexBuffer( {
-			context: viewer.scene.context,
-			typedArray: this.frustumVertex.getMeshHighVertices(),
-			usage: Cesium.BufferUsage.STATIC_DRAW,
-		} );
-		const positionLowBuffer = Cesium.Buffer.createVertexBuffer( {
-			context: viewer.scene.context,
-			typedArray: this.frustumVertex.getMeshLowVertices(),
-			usage: Cesium.BufferUsage.STATIC_DRAW,
-		} );
+		// const positionHighBuffer = Cesium.Buffer.createVertexBuffer( {
+		// 	context: viewer.scene.context,
+		// 	typedArray: this.frustumVertex.getMeshHighVertices(),
+		// 	usage: Cesium.BufferUsage.STATIC_DRAW,
+		// } );
+		// const positionLowBuffer = Cesium.Buffer.createVertexBuffer( {
+		// 	context: viewer.scene.context,
+		// 	typedArray: this.frustumVertex.getMeshLowVertices(),
+		// 	usage: Cesium.BufferUsage.STATIC_DRAW,
+		// } );
 
-		const indexBuffer = Cesium.Buffer.createIndexBuffer( {
-			context: viewer.scene.context,
-			typedArray: this.frustumVertex.getMeshIndices(),
-			usage: Cesium.BufferUsage.STATIC_DRAW,
-			indexDatatype: Cesium.IndexDatatype.UNSIGNED_SHORT,
-		} );
+		// const indexBuffer = Cesium.Buffer.createIndexBuffer( {
+		// 	context: viewer.scene.context,
+		// 	typedArray: this.frustumVertex.getMeshIndices(),
+		// 	usage: Cesium.BufferUsage.STATIC_DRAW,
+		// 	indexDatatype: Cesium.IndexDatatype.UNSIGNED_SHORT,
+		// } );
 
-		const attributes = [
-			{
-				index: 0,
-				vertexBuffer: positionHighBuffer,
-				componentsPerAttribute: 3,
-				componentDatatype: Cesium.ComponentDatatype.FLOAT,
-				offsetInBytes: 0,
-				strideInBytes: 3 * 4,
-				normalize: false,
-			},
-			{
-				index: 1,
-				vertexBuffer: positionLowBuffer,
-				componentsPerAttribute: 3,
-				componentDatatype: Cesium.ComponentDatatype.FLOAT,
-				offsetInBytes: 0,
-				strideInBytes: 3 * 4,
-				normalize: false,
-			},
-		];
+		// const attributes = [
+		// 	{
+		// 		index: 0,
+		// 		vertexBuffer: positionHighBuffer,
+		// 		componentsPerAttribute: 3,
+		// 		componentDatatype: Cesium.ComponentDatatype.FLOAT,
+		// 		offsetInBytes: 0,
+		// 		strideInBytes: 3 * 4,
+		// 		normalize: false,
+		// 	},
+		// 	{
+		// 		index: 1,
+		// 		vertexBuffer: positionLowBuffer,
+		// 		componentsPerAttribute: 3,
+		// 		componentDatatype: Cesium.ComponentDatatype.FLOAT,
+		// 		offsetInBytes: 0,
+		// 		strideInBytes: 3 * 4,
+		// 		normalize: false,
+		// 	},
+		// ];
 
-		const attributeLocations = {
-			positionHigh: 0,
-			positionLow: 1,
-		}
+		// const attributeLocations = {
+		// 	positionHigh: 0,
+		// 	positionLow: 1,
+		// }
 
-		const va = new Cesium.VertexArray( {
-			context: viewer.scene.context,
-			attributes: attributes,
-			indexBuffer: indexBuffer,
-		} );
+		// const va = new Cesium.VertexArray( {
+		// 	context: viewer.scene.context,
+		// 	attributes: attributes,
+		// 	indexBuffer: indexBuffer,
+		// } );
 
-		const uniformMap = {
-			color: () => this.color,
-		}
+		// const uniformMap = {
+		// 	color: () => this.color,
+		// }
 
-		const modelMatrix = new Cesium.Matrix4(
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0,
-		);
+		// const modelMatrix = new Cesium.Matrix4(
+		// 	1.0, 0.0, 0.0, 0.0,
+		// 	0.0, 1.0, 0.0, 0.0,
+		// 	0.0, 0.0, 1.0, 0.0,
+		// 	0.0, 0.0, 0.0, 1.0,
+		// );
 
-		const shaderProgram = Cesium.ShaderProgram.fromCache( {
-			context: viewer.scene.context,
-			vertexShaderSource: `
-				attribute vec3 positionHigh;
-				attribute vec3 positionLow;
-				attribute vec2 uv;
+		// const shaderProgram = Cesium.ShaderProgram.fromCache( {
+		// 	context: viewer.scene.context,
+		// 	vertexShaderSource: `
+		// 		attribute vec3 positionHigh;
+		// 		attribute vec3 positionLow;
+		// 		attribute vec2 uv;
 
-				vec4 computePosition( in vec3 positionHigh, in vec3 positionLow ) {
-					vec3 high = positionHigh - czm_encodedCameraPositionMCHigh;
-					vec3 low  = positionLow  - czm_encodedCameraPositionMCLow;
-					return vec4( high + low, 1.0 );
-				}
+		// 		vec4 computePosition( in vec3 positionHigh, in vec3 positionLow ) {
+		// 			vec3 high = positionHigh - czm_encodedCameraPositionMCHigh;
+		// 			vec3 low  = positionLow  - czm_encodedCameraPositionMCLow;
+		// 			return vec4( high + low, 1.0 );
+		// 		}
 
-				void main() {
-					vec4 position = czm_modelViewProjectionRelativeToEye * computePosition( positionHigh, positionLow );
-					gl_Position = position;
-				}
-			`,
-			fragmentShaderSource: `
+		// 		void main() {
+		// 			vec4 position = czm_modelViewProjectionRelativeToEye * computePosition( positionHigh, positionLow );
+		// 			gl_Position = position;
+		// 		}
+		// 	`,
+		// 	fragmentShaderSource: `
 			
-				uniform vec4 color;
-				void main() {
-					gl_FragColor = color;
-				}
-			`,
-			attributeLocations: attributeLocations,
-		} );
+		// 		uniform vec4 color;
+		// 		void main() {
+		// 			gl_FragColor = color;
+		// 		}
+		// 	`,
+		// 	attributeLocations: attributeLocations,
+		// } );
 
-		const renderState = new Cesium.RenderState( {
-			cull: {
-				enabled: true,
-				face: Cesium.CullFace.BACK,
-			},
-			depthTest: {
-				enabled: true,
-			},
-		} );
+		// const renderState = new Cesium.RenderState( {
+		// 	cull: {
+		// 		enabled: true,
+		// 		face: Cesium.CullFace.BACK,
+		// 	},
+		// 	depthTest: {
+		// 		enabled: true,
+		// 	},
+		// } );
 
-		const drawCommand = new Cesium.DrawCommand( {
-			owner: this,
-			vertexArray: va,
-			uniformMap: uniformMap,
-			shaderProgram: shaderProgram,
-			primitiveType: Cesium.PrimitiveType.TRIANGLES,
-			// primitiveType: Cesium.PrimitiveType.LINES,
-			renderState: renderState,
-			pass: Cesium.Pass.TERRAIN_CLASSIFICATION,
-			modelMatrix: modelMatrix,
-			castShadows: true,
-		} );
-		this.drawCommand = drawCommand;
+		// const drawCommand = new Cesium.DrawCommand( {
+		// 	owner: this,
+		// 	vertexArray: va,
+		// 	uniformMap: uniformMap,
+		// 	shaderProgram: shaderProgram,
+		// 	primitiveType: Cesium.PrimitiveType.TRIANGLES,
+		// 	// primitiveType: Cesium.PrimitiveType.LINES,
+		// 	renderState: renderState,
+		// 	pass: Cesium.Pass.TERRAIN_CLASSIFICATION,
+		// 	modelMatrix: modelMatrix,
+		// 	castShadows: true,
+		// } );
+		// this.drawCommand = drawCommand;
 	}
 
-	update( frameState ) {
-		frameState.commandList.push( this.drawCommand );
-	}
-
-	// 计算顶点
-	computeVertex() {
-
-		// 为了提高计算精度，不允许超过平角
-		if ( this.hAngle >= 180.0 || this.vAngle >= 180.0 ) return;
-		
-		this.frustumVertex.compute(
+	computeVertices() {
+		this.frustumVertex.computeVertices(
 			this.center, this.finish, this.realyRadius,
 			this.hAngle, this.vAngle,
 			this.hMeshGrid, this.vMeshGrid,
 			this.hLineGrid, this.vLineGrid,
 		);
 	}
+
+	// 计算并更新顶点坐标
+	updateVertices() {
+		this.computeVertices();
+		this.shadowBodys.updateVertices( this.frustumVertex.getMeshVertices() );
+		this.frustumLine.updateVertices( this.frustumVertex.getLineVertices() );
+	}
+
+	// update( frameState ) {
+	// 	frameState.commandList.push( this.drawCommand );
+	// }
+
+	// postPassesUpdate() {
+	// }
+	// prePassesUpdate() {
+	// }
+	// updateForPass() {
+	// }
+
 }
 
 export default Viewshed;

@@ -54,6 +54,7 @@ const PI2 = Math.PI * 2;
 
 /**
  * 该类用于维护视锥的顶点以及线索引和面索引
+ * 需要注意的是，索引一旦确定，不允许更改，这意味着，grid 属性不允许后期更改
  */
 const FrustumVertex = class {
 
@@ -275,7 +276,7 @@ const FrustumVertex = class {
 	 * 计算各个顶点, 与关键方向具有相同的坐标系组织方法
 	 * @see compute
 	 */
-	computeVertices( center, radius, hAngle, vAngle, hGrid, vGrid, hVertices, lVertices ) {
+	 computeFrustumVertices( center, radius, hAngle, vAngle, hGrid, vGrid, hVertices, lVertices ) {
 
 		/**
 		 * 预处理计算，从关键方向中提取 0,3. 1,2. 组成基建对。
@@ -394,7 +395,7 @@ const FrustumVertex = class {
 	computLineIndices( hGrid, vGrid, indices ) {
 
 		let startingIndex = 0;
-		indices.splice( 0 ); indices.length = ( hGrid * vGrid + 4 ) * 2;
+		indices.splice( 0 ); indices.length = ( hGrid * ( vGrid + 1 ) + ( hGrid + 1 ) * vGrid + 4 ) * 2;
 
 		// 视锥线
 		indices[ 0 ] = 0; indices[ 1 ] = this.computeIndex(     0,     0, hGrid, vGrid );
@@ -437,67 +438,19 @@ const FrustumVertex = class {
 	 * @param hLineGrid <Number> must 视网线 网格 水平分割个数
 	 * @param vLineGrid <Number> must 视网线 网格 竖直分割个数
 	 */
-	compute( center, finish, radius, hAngle, vAngle, hMeshGrid, vMeshGrid, hLineGrid, vLineGrid ) {
+	computeVertices( center, finish, radius, hAngle, vAngle, hMeshGrid, vMeshGrid, hLineGrid, vLineGrid ) {
 
 		// 确定局部坐标系
 		this.computeLocalSystem( center, finish );
 
-		// 局部坐标系可视化
-		this.getLocalAxis( 0, this.vec );
-		addDebugLineByD( center, this.vec, 10, new Cesium.Color( 1.0, 0.0, 0.0, 1.0 ) );
-		this.getLocalAxis( 1, this.vec );
-		addDebugLineByD( center, this.vec, 10, new Cesium.Color( 0.0, 1.0, 0.0, 1.0 ) );
-		this.getLocalAxis( 2, this.vec );
-		addDebugLineByD( center, this.vec, 10, new Cesium.Color( 0.0, 0.0, 1.0, 1.0 ) );
-
-		// 中心点可视化
-		addDebugPoint( center, 5, new Cesium.Color( 1.0, 0.0, 0.0, 1.0 ) );
-
 		// 计算四个关键角点方向
 		this.computeKeyDirections( hAngle, vAngle );
-		// // 关键角点方向可视化
-		// for ( let i = 0, len = this.keyDirections.length; i < len; ++i ) {
-		// 	const ni = i+1;
-		// 	addDebugLineByD( center, this.keyDirections[ i ], radius, new Cesium.Color( 0.0 * ni, 0.25 * ni, 0.25 * ni, 1.0 ) );
-		// }
 
-		// 视网面 顶点 索引 构建
-		this.computeVertices( center, radius, hAngle, vAngle, hMeshGrid, vMeshGrid, this.meshHighVertices, this.meshLowVertices );
-		this.computeMeshIndices( hMeshGrid, vMeshGrid, this.meshIndices );
-
-		// // 视网面顶点可视化
-		// for ( let h = 0, lenH = hMeshGrid+1; h < lenH; ++h ) {
-
-		// 	for ( let v = 0, lenV = vMeshGrid+1; v < lenV; ++v ) {
-
-		// 		const s =  v * lenV * 3 + 3 + h * 3;
-		// 		const [ x, y, z ] = this.meshVertices.slice(
-		// 			s,
-		// 			s + 3,
-		// 		);
-
-		// 		const point = new Cesium.Cartesian3( x, y, z );
-		// 		addDebugPoint( point, 5, new Cesium.Color( 1.0 * h / hMeshGrid, 1.0 * v / vMeshGrid, 0.0, 1.0 ) );
-		// 	}
-		// }
+		// 视网面 顶点 构建
+		this.computeFrustumVertices( center, radius, hAngle, vAngle, hMeshGrid, vMeshGrid, this.meshHighVertices, this.meshLowVertices );
 		
-		// 视网线 顶点 索引 构建
-		this.computeVertices( center, radius, hAngle, vAngle, hLineGrid, vLineGrid, this.lineHighVertices, this.lineLowVertices );
-		this.computLineIndices( hLineGrid, vLineGrid, this.lineIndices );
-		// for ( let h = 0, lenH = hLineGrid+1; h < lenH; ++h ) {
-
-		// 	for ( let v = 0, lenV = vLineGrid+1; v < lenV; ++v ) {
-
-		// 		const s =  v * lenV * 3 + 3 + h * 3;
-		// 		const [ x, y, z ] = this.lineVertices.slice(
-		// 			s,
-		// 			s + 3,
-		// 		);
-
-		// 		const point = new Cesium.Cartesian3( x, y, z );
-		// 		addDebugPoint( point, 5, new Cesium.Color( 1.0 * h / hLineGrid, 1.0 * v / vLineGrid, 0.0, 1.0 ) );
-		// 	}
-		// }
+		// 视网线 顶点 构建
+		this.computeFrustumVertices( center, radius, hAngle, vAngle, hLineGrid, vLineGrid, this.lineHighVertices, this.lineLowVertices );
 
 		// 还原中间量
 		Cesium.Cartesian3.fromElements( 0, 0, 0, this.vecA );
@@ -505,19 +458,42 @@ const FrustumVertex = class {
 		Cesium.Cartographic.fromRadians( 0, 0, 0, this.llh );
 	}
 
-	// 获取视网面顶点坐标
-	getMeshHighVertices() {
-
-		return new Float32Array( this.meshHighVertices );
+	/**
+	 * 计算索引坐标
+	 * @param hMeshGrid <Number> must 视网面 网格 水平分割个数
+	 * @param vMeshGrid <Number> must 视网面 网格 竖直分割个数
+	 * @param hLineGrid <Number> must 视网线 网格 水平分割个数
+	 * @param vLineGrid <Number> must 视网线 网格 竖直分割个数
+	 */
+	computeIndices( hMeshGrid, vMeshGrid, hLineGrid, vLineGrid ) {
+		this.computeMeshIndices( hMeshGrid, vMeshGrid, this.meshIndices );
+		this.computLineIndices( hLineGrid, vLineGrid, this.lineIndices );
 	}
-	getMeshLowVertices() {
-		
-		return new Float32Array( this.meshLowVertices );
+
+	// 获取视网面顶点坐标
+	getMeshVertices() {
+
+		return {
+			high: new Float32Array( this.meshHighVertices ),
+			low:  new Float32Array( this.meshLowVertices ),
+		}
 	}
 
 	// 获取视网面顶点索引
 	getMeshIndices() {
 		return new Uint16Array( this.meshIndices );
+	}
+
+	getLineVertices() {
+
+		return {
+			high: new Float32Array( this.lineHighVertices ),
+			low:  new Float32Array( this.lineLowVertices ),
+		}
+	}
+
+	getLineIndices() {
+		return new Uint16Array( this.lineIndices );
 	}
 }
 

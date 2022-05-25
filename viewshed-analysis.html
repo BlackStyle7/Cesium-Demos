@@ -14,6 +14,9 @@
 		<script type="module">
 			import initTestCesium from './js/initTestCesium.js';
 			import Viewshed from './js/expands/Viewshed.js';
+			import { GUI } from './js/libs/lil-gui.module.min.js';
+			window.GUI = GUI;
+			window.gui = new GUI();
 
 			const container = document.getElementsByClassName( 'container' )[ 0 ];
 			window.viewer = initTestCesium( container );
@@ -25,22 +28,6 @@
 			viewer.scene.globe.depthTestAgainstTerrain = true;
 			// 开启阴影贴图
 			viewer.shadowMap.enabled = true;
-
-			// 鼠标拾取点位相关
-			const eventHandler = new Cesium.ScreenSpaceEventHandler( container );
-			eventHandler.setInputAction( e => {
-				const { position } = e;
-
-				const cartesian = viewer.scene.pickPosition( position );
-				if ( !cartesian ) return;
-
-				const cartographic = new Cesium.Cartographic();
-				Cesium.Cartographic.fromCartesian( cartesian, Cesium.Ellipsoid.WGS84, cartographic );
-				cartographic.longitude *= 180.0 / Math.PI;
-				cartographic.latitude *= 180.0 / Math.PI;
-
-				console.log( cartesian, cartographic );
-			}, Cesium.ScreenSpaceEventType.LEFT_CLICK );
 
 			// 飞到珠峰
 			viewer.camera.flyTo( {
@@ -63,21 +50,76 @@
 				} ),
 			} ) );
 
+			viewer.entities.add( new Cesium.Entity( {
+				position: Cesium.Cartesian3.fromDegrees( 116.4308300118336, 39.8681128242441, 100, Cesium.Ellipsoid.WGS84, new Cesium.Cartesian3() ),
+				box: new Cesium.BoxGraphics( {
+					dimensions: new Cesium.Cartesian3( 30, 30, 30 ),
+					// heightReference	物业 | 高度参考	<可选>
+					// 高度参考.NONE	一个属性，指定相对于实体位置的高度。
+					// fill	物业 | 布尔值	<可选>
+					// 真的	一个布尔属性，指定是否用提供的材料填充盒子。
+					material: new Cesium.Color( 1.0, 1.0, 1.0, 1.0 ),
+					shadows: Cesium.ShadowMode.ENABLED,
+				} ),
+			} ) );
+
 
 			window.viewshed = new Viewshed( viewer, {
 				center: new Cesium.Cartesian3( -2181978.9050992643, 4389808.853555092, 4066834.8930986333 ),  // 中心处
-				finish: new Cesium.Cartesian3( -2182124.3580587070, 4389690.005496633, 4066801.3722747406 ),  // 结束处
+				finish: new Cesium.Cartesian3( -2182071.9942011917, 4389733.431393935, 4066799.1624867650 ),  // 结束处
 				radius: 160,  // 最大能见距离，如果未指定，将内置为 起点-终点
 				hAngle: 120.0 * Math.PI / 180, vAngle:  60.0 * Math.PI / 180,  // 水平竖直角
 				hMeshGrid: 23, vMeshGrid: 23,  // 视网面水平竖直方向切分个数
-				hLineGrid: 10, vLineGrid: 10,  // 视网线水平竖直方向切分个数
+				hLineGrid: 9, vLineGrid: 9,  // 视网线水平竖直方向切分个数
 				visibleColor: new Cesium.Color( 0.0, 1.0, 0.0, 1.0 ),  // 可视区域颜色
 				invisibleColor: new Cesium.Color( 1.0, 0.0, 0.0, 1.0 ),  // 不可视区域颜色
 				alpha: 0.8,  // 投影区域透明度
-				lineColor: new Cesium.Color( 0.0, 1.0, 0.0, 1.0 ),  // 视锥线颜色
+				lineColor: new Cesium.Color( 0.0, 0.0, 1.0, 1.0 ),  // 视锥线颜色
 			} );
 			viewer.scene.primitives.add( viewshed );
 			
+			gui.add( viewshed, 'hAngle', 0, 160 * Math.PI/180, 0.01 ).onChange( value => {
+				if ( value <= 0 || value >= 160 * Math.PI/180 ) return;
+				viewshed.updateVertices();
+			} );
+			gui.add( viewshed, 'vAngle', 0, 160 * Math.PI/180, 0.01 ).onChange( value => {
+				if ( value <= 0 || value >= 160 * Math.PI/180 ) return;
+				viewshed.updateVertices();
+			} );
+			gui.add( viewshed, 'realyRadius', 1, 160, 0.01 ).onChange( value => {
+				if ( value <= 1 || value >= 160 ) return;
+				viewshed.updateVertices();
+			} );
+
+			// 鼠标拾取点位相关
+			const eventHandler = new Cesium.ScreenSpaceEventHandler( container );
+			eventHandler.setInputAction( e => {
+				const { position } = e;
+
+				const cartesian = viewer.scene.pickPosition( position );
+				if ( !cartesian ) return;
+
+				const cartographic = new Cesium.Cartographic();
+				Cesium.Cartographic.fromCartesian( cartesian, Cesium.Ellipsoid.WGS84, cartographic );
+				cartographic.longitude *= 180.0 / Math.PI;
+				cartographic.latitude *= 180.0 / Math.PI;
+
+				console.log( cartesian, cartographic );
+
+				Cesium.Cartesian3.clone( cartesian, viewshed.finish );
+				viewshed.updateVertices();
+
+			}, Cesium.ScreenSpaceEventType.LEFT_CLICK );
+			eventHandler.setInputAction( e => {
+				const { position } = e;
+
+				const cartesian = viewer.scene.pickPosition( position );
+				if ( !cartesian ) return;
+
+				Cesium.Cartesian3.clone( cartesian, viewshed.center );
+				viewshed.updateVertices();
+
+			}, Cesium.ScreenSpaceEventType.RIGHT_CLICK );
 		</script>
 	</body>
 </html>
