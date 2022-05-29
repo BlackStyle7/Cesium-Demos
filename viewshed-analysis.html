@@ -28,30 +28,33 @@
 			viewer.scene.globe.depthTestAgainstTerrain = true;
 			// 开启阴影贴图
 			viewer.shadowMap.enabled = true;
+			// 开启动画
+			viewer.clock.shouldAnimate = true;
 
 			// 飞到一个山区
 			viewer.camera.flyTo( {
-				destination: new Cesium.Cartesian3( -2182240.151834887, 4390009.309539444, 4066673.56949234 ),
+				destination: new Cesium.Cartesian3( 1215528.8666895148, -4736315.052708554, 4082075.0715739364 ),
 				orientation: {
-					heading: 6.230718563236456,
-					pitch: -0.5339946346090603,
-					roll: 0.000004092825143686696,
+					heading: 4.276327543720175,
+					pitch: -0.5065097821145854,
+					roll: 6.2831829251369715,
 				},
 			} );
 
-			viewer.entities.add( new Cesium.Entity( {
-				polygon: new Cesium.PolygonGraphics( {
-					hierarchy: new Cesium.PolygonHierarchy( Cesium.Cartesian3.fromDegreesArrayHeights( [
-							116.43223708198722,	39.86864960587005,	33.60730201230560,
-							116.43213773462453,	39.86796775452591,	51.54894417685323,
-							116.43304755217370,	39.86786741902903,	34.55568057999458,
-							116.43335697085442,	39.86859321778193,	28.30752846362601,
-					] ) ),
-				} ),
-			} ) );
+			// 添加一个用于测试的物体，用于生成阴影
+			// viewer.entities.add( new Cesium.Entity( {
+			// 	polygon: new Cesium.PolygonGraphics( {
+			// 		hierarchy: new Cesium.PolygonHierarchy( Cesium.Cartesian3.fromDegreesArrayHeights( [
+			// 				116.43223708198722,	39.86864960587005,	33.60730201230560,
+			// 				116.43213773462453,	39.86796775452591,	51.54894417685323,
+			// 				116.43304755217370,	39.86786741902903,	34.55568057999458,
+			// 				116.43335697085442,	39.86859321778193,	28.30752846362601,
+			// 		] ) ),
+			// 	} ),
+			// } ) );
 
 			viewer.entities.add( new Cesium.Entity( {
-				position: Cesium.Cartesian3.fromDegrees( 116.4308300118336, 39.8681128242441, 100, Cesium.Ellipsoid.WGS84, new Cesium.Cartesian3() ),
+				position: Cesium.Cartesian3.fromDegrees( -75.61177962551281, 40.043175244998885, 86.0, Cesium.Ellipsoid.WGS84, new Cesium.Cartesian3() ),
 				box: new Cesium.BoxGraphics( {
 					dimensions: new Cesium.Cartesian3( 30, 30, 30 ),
 					// heightReference	物业 | 高度参考	<可选>
@@ -62,12 +65,70 @@
 					shadows: Cesium.ShadowMode.ENABLED,
 				} ),
 			} ) );
+			viewer.entities.add({
+				name: '',
+				position: Cesium.Cartesian3.fromDegrees( -75.61165560762775, 40.04258383088898, 80.0, Cesium.Ellipsoid.WGS84, new Cesium.Cartesian3() ),
+				model: {
+					uri: './js/Cesium-1.93/Apps/SampleData/models/CesiumDrone/CesiumDrone.glb',
+				},
+			});
+
+			const tileset = new Cesium.Cesium3DTileset({
+				url: './js/Cesium-1.93/Apps/SampleData/Cesium3DTiles/Tilesets/Tileset/tileset.json',
+			});
+			viewer.scene.primitives.add( tileset );
+
+			window.setHeight = ( tileset, height ) => {
+				const cartographic = Cesium.Cartographic.fromCartesian(
+					tileset.boundingSphere.center
+				);
+				const surface = Cesium.Cartesian3.fromRadians(
+					cartographic.longitude,
+					cartographic.latitude,
+				0.0
+				);
+				const offset = Cesium.Cartesian3.fromRadians(
+					cartographic.longitude,
+					cartographic.latitude,
+					height
+				);
+				const translation = Cesium.Cartesian3.subtract(
+					offset,
+					surface,
+					new Cesium.Cartesian3()
+				);
+				tileset.modelMatrix = Cesium.Matrix4.fromTranslation( translation );
+			}
+
+			tileset.readyPromise.then( tileset => {
+
+				window.tileset = tileset;
+				setHeight( tileset, 69 );
+			} );
+
+			// 添加一个 GroundPrimitive
+			const rectangleInstance = new Cesium.GeometryInstance( {
+				geometry: new Cesium.RectangleGeometry( {
+					rectangle: Cesium.Rectangle.fromDegrees(
+						-75.61230889843975, 40.042228599299510,
+						-75.61004585002283, 40.044285703224006,
+					),
+					// rectangle: Cesium.Rectangle.fromDegrees( -140.0, 30.0, -100.0, 40.0 ),
+				} ),
+				id : 'rectangle',
+				attributes: {
+					color: new Cesium.ColorGeometryInstanceAttribute(0.0, 1.0, 1.0, 0.5)
+				},
+			} );
+			viewer.scene.primitives.add( new Cesium.GroundPrimitive( {
+				geometryInstances: rectangleInstance
+			} ) );
 
 
 			window.viewshed = new Viewshed( viewer, {
-				center: new Cesium.Cartesian3( -2181978.9050992643, 4389808.853555092, 4066834.8930986333 ),  // 中心处
-				finish: new Cesium.Cartesian3( -2182071.9942011917, 4389733.431393935, 4066799.1624867650 ),  // 结束处
-				radius: 160,  // 最大能见距离，如果未指定，将内置为 起点-终点
+				center: new Cesium.Cartesian3( 1214810.7096532225, -4736432.923545594, 4081815.8379699043 ),  // 中心处
+				finish: new Cesium.Cartesian3( 1215147.0124826352, -4736366.378255703, 4081611.8841926230 ),  // 结束处
+				// radius: 160,  // 最大能见距离，如果未指定，将内置为 起点-终点
 				hAngle: 120.0 * Math.PI / 180, vAngle:  60.0 * Math.PI / 180,  // 水平竖直角
 				hMeshGrid: 23, vMeshGrid: 23,  // 视网面水平竖直方向切分个数
 				hLineGrid: 9, vLineGrid: 9,  // 视网线水平竖直方向切分个数
@@ -86,8 +147,8 @@
 				if ( value <= 0 || value >= 160 * Math.PI/180 ) return;
 				viewshed.updateVertices();
 			} );
-			gui.add( viewshed, 'realyRadius', 1, 160, 0.01 ).onChange( value => {
-				if ( value <= 1 || value >= 160 ) return;
+			gui.add( viewshed, 'realyRadius', 1, 500, 0.01 ).onChange( value => {
+				if ( value <= 1 || value >= 500 ) return;
 				viewshed.updateVertices();
 			} );
 
@@ -106,14 +167,14 @@
 
 				console.log( cartesian, cartographic );
 
-				Cesium.Cartesian3.clone( cartesian, viewshed.finish );
-				viewshed.updateVertices();
+				// Cesium.Cartesian3.clone( cartesian, viewshed.finish );
+				// viewshed.updateVertices();
 
 			}, Cesium.ScreenSpaceEventType.LEFT_CLICK );
 			eventHandler.setInputAction( e => {
 				const { position } = e;
 
-				const cartesian = viewer.scene.pickPosition( position );
+				const cartesian = viewer.scene.pick( position );
 				if ( !cartesian ) return;
 
 				Cesium.Cartesian3.clone( cartesian, viewshed.center );

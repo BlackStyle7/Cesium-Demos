@@ -1,7 +1,9 @@
+import ShadowBody from './ShadowBody.js';
+
 /**
- * 该组件用于维护阴影体
+ * 该组件用于维护各个渲染通道 pass 的阴影体
  */
-const ShadowBodys = class {
+ const ShadowBodys = class {
 
 	constructor( viewer, option = {} ) {
 
@@ -18,9 +20,236 @@ const ShadowBodys = class {
 		this.positionHighBuffer = this.initVertexBuffer();
 		this.positionLowBuffer  = this.initVertexBuffer();
 
+		// 创建顶点数组
+		this.vertexArray = this.initVertexArray( indices );
+
+		// 创建模板着色器程序
+		this.stencilShaderProgram = Cesium.ShaderProgram.fromCache( {
+			context: viewer.scene.context,
+			vertexShaderSource: `
+				attribute vec3 positionHigh;
+				attribute vec3 positionLow;
+		
+				vec4 computePosition( in vec3 positionHigh, in vec3 positionLow ) {
+					vec3 high = positionHigh - czm_encodedCameraPositionMCHigh;
+					vec3 low  = positionLow  - czm_encodedCameraPositionMCLow;
+					return vec4( high + low, 1.0 );
+				}
+		
+				void main() {
+					vec4 position = czm_modelViewProjectionRelativeToEye * computePosition( positionHigh, positionLow );
+					gl_Position = position;
+				}
+			`,
+			fragmentShaderSource: `
+
+				void main() {
+					gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 );
+				}
+			`,
+			attributeLocations: {
+				positionHigh: 0,
+				positionLow:  1,
+			},
+		} );
+
+		// 创建渲染着色器程序
+		this.renderShaderProgram = Cesium.ShaderProgram.fromCache( {
+			context: viewer.scene.context,
+			vertexShaderSource: `
+				attribute vec3 positionHigh;
+				attribute vec3 positionLow;
+		
+				vec4 computePosition( in vec3 positionHigh, in vec3 positionLow ) {
+					vec3 high = positionHigh - czm_encodedCameraPositionMCHigh;
+					vec3 low  = positionLow  - czm_encodedCameraPositionMCLow;
+					return vec4( high + low, 1.0 );
+				}
+		
+				void main() {
+					vec4 position = czm_modelViewProjectionRelativeToEye * computePosition( positionHigh, positionLow );
+					gl_Position = position;
+				}
+			`,
+			fragmentShaderSource: `
+
+				uniform vec4 visibleColor;
+				uniform vec4 invisibleColor;
+				void main() {
+					float alpha = 0.2;
+					gl_FragColor = visibleColor * alpha;
+				}
+			`,
+			attributeLocations: {
+				positionHigh: 0,
+				positionLow:  1,
+			},
+		} );
+
+		// 创建渲染状态
+		this.renderStates = [
+			new Cesium.RenderState( {
+				blending: { enabled: false },
+				colorMask: { red: false, green: false, blue: false, alpha: false },
+				cull: { enabled: false },
+				depthMask: false,
+				depthRange: { near: 0, far: 1 },
+				depthTest: { enabled: true, func: 515 },
+				frontFace: 2305,
+				polygonOffset: { enabled: false },
+				sampleCoverage: { enabled: false },
+				scissorTest: { enabled: false },
+				stencilMask: 15,
+				stencilTest: {
+					enabled: true,
+					backFunction: 519,
+					backOperation: {fail: 7680, zFail: 34055, zPass: 7680},
+					frontFunction: 519,
+					frontOperation: {fail: 7680, zFail: 34056, zPass: 7680},
+					mask: 128,
+					reference: 128,
+				},
+			} ),
+			
+			new Cesium.RenderState( {
+				blending: {
+					color: {red: 0, green: 0, blue: 0, alpha: 0},
+					enabled: false,
+					equationAlpha: 32774,
+					equationRgb: 32774,
+					functionDestinationAlpha: 0,
+					functionDestinationRgb: 0,
+					functionSourceAlpha: 1,
+					functionSourceRgb: 1,
+				},
+				colorMask: {red: false, green: false, blue: false, alpha: false},
+				cull: {enabled: false, face: 1029},
+				depthMask: false,
+				depthRange: {near: 0, far: 1},
+				depthTest: {enabled: true, func: 515},
+				frontFace: 2305,
+				polygonOffset: {enabled: false, factor: 0, units: 0},
+				sampleCoverage: {enabled: false, value: 1, invert: false},
+				scissorTest: {
+					enabled: false,
+					rectangle: {x: 0, y: 0, width: 0, height: 0},
+				},
+				stencilMask: 15,
+				stencilTest: {
+					backFunction: 514,
+					backOperation: {fail: 7680, zFail: 34055, zPass: 7680},
+					enabled: true,
+					frontFunction: 514,
+					frontOperation: {fail: 7680, zFail: 34056, zPass: 7680},
+					mask: 128,
+					reference: 128,
+				},
+			} ),
+			
+			new Cesium.RenderState( {
+				blending: {
+					color: {red: 0, green: 0, blue: 0, alpha: 0},
+					enabled: true,
+					equationAlpha: 32774,
+					equationRgb: 32774,
+					functionDestinationAlpha: 771,
+					functionDestinationRgb: 771,
+					functionSourceAlpha: 1,
+					functionSourceRgb: 1,
+				},
+				colorMask: {red: true, green: true, blue: true, alpha: true},
+				cull: {enabled: false, face: 1029},
+				depthMask: false,
+				depthRange: {near: 0, far: 1},
+				depthTest: {enabled: false, func: 513},
+				frontFace: 2305,
+				polygonOffset: {enabled: false, factor: 0, units: 0},
+				sampleCoverage: {enabled: false, value: 1, invert: false},
+				scissorTest: {
+					enabled: false,
+					rectangle: {x: 0, y: 0, width: 0, height: 0},
+				},
+				stencilMask: 15,
+				stencilTest: {
+					backFunction: 517,
+					backOperation: {fail: 0, zFail: 0, zPass: 0},
+					enabled: true,
+					frontFunction: 517,
+					frontOperation: {fail: 0, zFail: 0, zPass: 0},
+					mask: 15,
+					reference: 0,
+				},
+			} ),
+		];
+
 		this.modelMatrix = Cesium.Matrix4.clone( Cesium.Matrix4.IDENTITY, new Cesium.Matrix4() );
 
-		this.drawCommand = this.initDrawCommand( indices );
+		/**
+		 * 为了维护方便，建议在这里对 drawCommand 进行分类
+		 * 这里有两种想法，一种是分为 模板测试类 和 着色类
+		 * 另一种方法是将其直接分为阴影体类，按照图层进行分类，建议用这种
+		 */
+		this.drawCommands = [
+			new Cesium.DrawCommand( {
+				owner: this,
+				vertexArray: this.vertexArray,
+				uniformMap: {
+					visibleColor: () => this.visibleColor,
+					invisibleColor: () => this.invisibleColor,
+				},
+				shaderProgram: this.stencilShaderProgram,
+				primitiveType: Cesium.PrimitiveType.TRIANGLES,
+				renderState: this.renderStates[ 0 ],
+				pass: Cesium.Pass.TERRAIN_CLASSIFICATION,
+				modelMatrix: this.modelMatrix,
+				castShadows: false,
+			} ),
+			new Cesium.DrawCommand( {
+				owner: this,
+				vertexArray: this.vertexArray,
+				uniformMap: {
+					visibleColor: () => this.visibleColor,
+					invisibleColor: () => this.invisibleColor,
+				},
+				shaderProgram: this.renderShaderProgram,
+				primitiveType: Cesium.PrimitiveType.TRIANGLES,
+				renderState: this.renderStates[ 2 ],
+				pass: Cesium.Pass.TERRAIN_CLASSIFICATION,
+				modelMatrix: this.modelMatrix,
+				castShadows: false,
+			} ),
+
+			new Cesium.DrawCommand( {
+				owner: this,
+				vertexArray: this.vertexArray,
+				uniformMap: {
+					visibleColor: () => this.visibleColor,
+					invisibleColor: () => this.invisibleColor,
+				},
+				shaderProgram: this.stencilShaderProgram,
+				primitiveType: Cesium.PrimitiveType.TRIANGLES,
+				renderState: this.renderStates[ 1 ],
+				pass: Cesium.Pass.CESIUM_3D_TILE_CLASSIFICATION,
+				modelMatrix: this.modelMatrix,
+				castShadows: false,
+			} ),
+			new Cesium.DrawCommand( {
+				owner: this,
+				vertexArray: this.vertexArray,
+				uniformMap: {
+					visibleColor: () => this.visibleColor,
+					invisibleColor: () => this.invisibleColor,
+				},
+				shaderProgram: this.renderShaderProgram,
+				primitiveType: Cesium.PrimitiveType.TRIANGLES,
+				renderState: this.renderStates[ 2 ],
+				pass: Cesium.Pass.CESIUM_3D_TILE_CLASSIFICATION,
+				modelMatrix: this.modelMatrix,
+				castShadows: false,
+			} ),
+			// 建一个 GroundPrrmitive 再次测试
+			
+		];
 	}
 
 	initVertexBuffer() {
@@ -83,77 +312,18 @@ const ShadowBodys = class {
 		return vertexArray;
 	}
 
-
-	static vShaderSource = `
-		attribute vec3 positionHigh;
-		attribute vec3 positionLow;
-		attribute vec2 uv;
-
-		vec4 computePosition( in vec3 positionHigh, in vec3 positionLow ) {
-			vec3 high = positionHigh - czm_encodedCameraPositionMCHigh;
-			vec3 low  = positionLow  - czm_encodedCameraPositionMCLow;
-			return vec4( high + low, 1.0 );
-		}
-
-		void main() {
-			vec4 position = czm_modelViewProjectionRelativeToEye * computePosition( positionHigh, positionLow );
-			gl_Position = position;
-		}
-	`;
-	static fShaderSource = `
-			
-		uniform vec4 visibleColor;
-		uniform vec4 invisibleColor;
-		void main() {
-			float alpha = 0.2;
-			gl_FragColor = visibleColor * alpha;
-		}
-	`;
-	initShaderProgram() {
-
-		const shaderProgram = Cesium.ShaderProgram.fromCache( {
-			context: viewer.scene.context,
-			vertexShaderSource: ShadowBodys.vShaderSource,
-			fragmentShaderSource: ShadowBodys.fShaderSource,
-			attributeLocations: {
-				positionHigh: 0,
-				positionLow:  1,
-			},
-		} );
-
-		return shaderProgram;
-	}
-
-	initDrawCommand( indices ) {
+	initDrawCommand() {
 
 		const drawCommand = new Cesium.DrawCommand( {
 			owner: this,
-			vertexArray: this.initVertexArray( indices ),
+			vertexArray: this.vertexArray,
 			uniformMap: {
 				visibleColor: () => this.visibleColor,
 				invisibleColor: () => this.invisibleColor,
 			},
-			shaderProgram: this.initShaderProgram(),
+			shaderProgram: this.shaderPrograms[ 0 ],
 			primitiveType: Cesium.PrimitiveType.TRIANGLES,
-			renderState: new Cesium.RenderState( {
-				blending: {
-					color: {red: 0, green: 0, blue: 0, alpha: 0},
-					enabled: true,
-					equationAlpha: Cesium.BlendEquation.ADD,
-					equationRgb: Cesium.BlendEquation.ADD,
-					functionSourceRgb: Cesium.BlendFunction.ONE,
-					functionSourceAlpha: Cesium.BlendFunction.ONE,
-					functionDestinationRgb: Cesium.BlendFunction.ONE_MINUS_SOURCE_ALPHA,
-					functionDestinationAlpha: Cesium.BlendFunction.ONE_MINUS_SOURCE_ALPHA,
-				},
-				cull: {
-					enabled: true,
-					face: Cesium.CullFace.BACK,
-				},
-				depthTest: {
-					enabled: true,
-				},
-			} ),
+			renderState: this.renderStates[ 0 ],
 			pass: Cesium.Pass.OPAQUE,
 			modelMatrix: this.modelMatrix,
 			castShadows: false,
@@ -170,7 +340,10 @@ const ShadowBodys = class {
 	}
 
 	update( frameState ) {
-		frameState.commandList.push( this.drawCommand );
+		for ( let i = 0, len = this.drawCommands.length; i < len; ++i ) {
+
+			frameState.commandList.push( this.drawCommands[ i ] );
+		}
 	}
 }
 
@@ -181,7 +354,9 @@ const shader0 = {
 		#define EXTRUDED_GEOMETRY
 		#define OES_texture_float_linear
 		
-		#define OES_texture_float\n\nfloat czm_signNotZero(float value)\n{\nreturn value >= 0.0 ? 1.0 : -1.0;\n}
+		#define OES_texture_float
+		
+		float czm_signNotZero(float value) {\nreturn value >= 0.0 ? 1.0 : -1.0;\n}
 		vec2 czm_signNotZero(vec2 value)\n{\nreturn vec2(czm_signNotZero(value.x), czm_signNotZero(value.y));\n}\nvec3 czm_signNotZero(vec3 value)\n{\nreturn vec3(czm_signNotZero(value.x), czm_signNotZero(value.y), czm_signNotZero(value.z));\n}\nvec4 czm_signNotZero(vec4 value)\n{\nreturn vec4(czm_signNotZero(value.x), czm_signNotZero(value.y), czm_signNotZero(value.z), czm_signNotZero(value.w));\n}\n\nuniform vec3 czm_encodedCameraPositionMCLow;\nuniform vec3 czm_encodedCameraPositionMCHigh;\nvec3 czm_octDecode(vec2 encoded, float range)\n{\nif (encoded.x == 0.0 && encoded.y == 0.0) {\nreturn vec3(0.0, 0.0, 0.0);\n}\nencoded = encoded / range * 2.0 - 1.0;\nvec3 v = vec3(encoded.x, encoded.y, 1.0 - abs(encoded.x) - abs(encoded.y));\nif (v.z < 0.0)\n{\nv.xy = (1.0 - abs(v.yx)) * czm_signNotZero(v.xy);\n}\nreturn normalize(v);\n}\nvec3 czm_octDecode(vec2 encoded)\n{\nreturn czm_octDecode(encoded, 255.0);\n}\nvec3 czm_octDecode(float encoded)\n{\nfloat temp = encoded / 256.0;\nfloat x = floor(temp);\nfloat y = (temp - x) * 256.0;\nreturn czm_octDecode(vec2(x, y));\n}\nvoid czm_octDecode(vec2 encoded, out vec3 vector1, out vec3 vector2, out vec3 vector3)\n{\nfloat temp = encoded.x / 65536.0;\nfloat x = floor(temp);\nfloat encodedFloat1 = (temp - x) * 65536.0;\ntemp = encoded.y / 65536.0;\nfloat y = floor(temp);\nfloat encodedFloat2 = (temp - y) * 65536.0;\nvector1 = czm_octDecode(encodedFloat1);\nvector2 = czm_octDecode(encodedFloat2);\nvector3 = czm_octDecode(vec2(x, y));\n}\n\nuniform vec2 czm_eyeHeight2D;\nconst float czm_sceneMode2D = 2.0;\n\nvec4 czm_columbusViewMorph(vec4 position2D, vec4 position3D, float time)\n{\nvec3 p = mix(position2D.xyz, position3D.xyz, time);\nreturn vec4(p, 1.0);\n}\n\nuniform float czm_morphTime;\nuniform mat4 czm_modelViewProjectionRelativeToEye;\n#if defined(GL_EXT_frag_depth) && !defined(LOG_DEPTH)\nvarying float v_WindowZ;\n#endif\nvec4 czm_depthClamp(vec4 coords)\n{\n#ifndef LOG_DEPTH\n#ifdef GL_EXT_frag_depth\nv_WindowZ = (0.5 * (coords.z / coords.w) + 0.5) * coords.w;\ncoords.z = 0.0;\n#else\ncoords.z = min(coords.z, coords.w);\n#endif\n#endif\nreturn coords;\n}\n\nuniform mat3 czm_normal;\nvec4 czm_translateRelativeToEye(vec3 high, vec3 low)\n{\nvec3 highDifference = high - czm_encodedCameraPositionMCHigh;\nvec3 lowDifference = low - czm_encodedCameraPositionMCLow;\nreturn vec4(highDifference + lowDifference, 1.0);\n}\n\nuniform mat4 czm_modelViewRelativeToEye;\nfloat czm_branchFreeTernary(bool comparison, float a, float b) {\nfloat useA = float(comparison);\nreturn a * useA + b * (1.0 - useA);\n}\nvec2 czm_branchFreeTernary(bool comparison, vec2 a, vec2 b) {\nfloat useA = float(comparison);\nreturn a * useA + b * (1.0 - useA);\n}\nvec3 czm_branchFreeTernary(bool comparison, vec3 a, vec3 b) {\nfloat useA = float(comparison);\nreturn a * useA + b * (1.0 - useA);\n}\nvec4 czm_branchFreeTernary(bool comparison, vec4 a, vec4 b) {\nfloat useA = float(comparison);\nreturn a * useA + b * (1.0 - useA);\n}\n\nconst float czm_sceneMode3D = 3.0;\n\nuniform float czm_sceneMode;\nuniform float czm_geometricToleranceOverMeter;\nvec4 czm_computePosition();\n\n\n\n#line 0\n\n#line 0\nattribute vec2 compressedAttributes;\nvec3 extrudeDirection;\n\n\nattribute vec3 position2DHigh;\nattribute vec3 position2DLow;\n\nattribute vec3 position3DHigh;\nattribute vec3 position3DLow;\nattribute float batchId;\n#ifdef EXTRUDED_GEOMETRY\n\nuniform float u_globeMinimumAltitude;\n#endif \n#ifdef PER_INSTANCE_COLOR\nvarying vec4 v_color;\n#endif \n#ifdef TEXTURE_COORDINATES\n#ifdef SPHERICAL\nvarying vec4 v_sphericalExtents;\n#else \nvarying vec2 v_inversePlaneExtents;\nvarying vec4 v_westPlane;\nvarying vec4 v_southPlane;\n#endif \nvarying vec3 v_uvMinAndSphericalLongitudeRotation;\nvarying vec3 v_uMaxAndInverseDistance;\nvarying vec3 v_vMaxAndInverseDistance;\n#endif \n\nuniform highp sampler2D batchTexture; \nuniform vec4 batchTextureStep; \nvec2 computeSt(float batchId) \n{ \n    float stepX = batchTextureStep.x; \n    float centerX = batchTextureStep.y; \n    float numberOfAttributes = float(17); \n    return vec2(centerX + (batchId * numberOfAttributes * stepX), 0.5); \n} \n\nvec4 czm_batchTable_uMaxVmax(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(0); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \n    return value; \n} \nvec4 czm_batchTable_uvMinAndExtents(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(1); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \n    return value; \n} \nvec3 czm_batchTable_southWest_HIGH(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(2); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_southWest_LOW(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(3); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_eastward(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(4); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_northward(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(5); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec4 czm_batchTable_planes2D_HIGH(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(6); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \n    return value; \n} \nvec4 czm_batchTable_planes2D_LOW(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(7); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \n    return value; \n} \nfloat czm_batchTable_show(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(8); \n    vec4 textureValue = texture2D(batchTexture, st); \n    float value = textureValue.x; \n    return value; \n} \nvec2 czm_batchTable_distanceDisplayCondition(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(9); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec2 value = textureValue.xy; \n    return value; \n} \nvec4 czm_batchTable_color(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(10); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \nvalue /= 255.0; \n    return value; \n} \nvec3 czm_batchTable_boundingSphereCenter3DHigh(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(11); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_boundingSphereCenter3DLow(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(12); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_boundingSphereCenter2DHigh(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(13); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nvec3 czm_batchTable_boundingSphereCenter2DLow(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(14); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec3 value = textureValue.xyz; \n    return value; \n} \nfloat czm_batchTable_boundingSphereRadius(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(15); \n    vec4 textureValue = texture2D(batchTexture, st); \n    float value = textureValue.x; \n    return value; \n} \nvec4 czm_batchTable_pickColor(float batchId) \n{ \n    vec2 st = computeSt(batchId); \n    st.x += batchTextureStep.x * float(16); \n    vec4 textureValue = texture2D(batchTexture, st); \n    vec4 value = textureValue; \nvalue /= 255.0; \n    return value; \n} \n\nvoid czm_non_distanceDisplayCondition_main()\n{\nvec4 position = czm_computePosition();\n#ifdef EXTRUDED_GEOMETRY\nfloat delta = min(u_globeMinimumAltitude, czm_geometricToleranceOverMeter * length(position.xyz));\ndelta *= czm_sceneMode == czm_sceneMode3D ? 1.0 : 0.0;\nposition = position + vec4(extrudeDirection * delta, 0.0);\n#endif\n#ifdef TEXTURE_COORDINATES\n#ifdef SPHERICAL\nv_sphericalExtents = czm_batchTable_sphericalExtents(batchId);\nv_uvMinAndSphericalLongitudeRotation.z = czm_batchTable_longitudeRotation(batchId);\n#else \n#ifdef COLUMBUS_VIEW_2D\nvec4 planes2D_high = czm_batchTable_planes2D_HIGH(batchId);\nvec4 planes2D_low = czm_batchTable_planes2D_LOW(batchId);\nvec2 idlSplitNewPlaneHiLow = vec2(EAST_MOST_X_HIGH - (WEST_MOST_X_HIGH - planes2D_high.w), EAST_MOST_X_LOW - (WEST_MOST_X_LOW - planes2D_low.w));\nbool idlSplit = planes2D_high.x > planes2D_high.w && position3DLow.y > 0.0;\nplanes2D_high.w = czm_branchFreeTernary(idlSplit, idlSplitNewPlaneHiLow.x, planes2D_high.w);\nplanes2D_low.w = czm_branchFreeTernary(idlSplit, idlSplitNewPlaneHiLow.y, planes2D_low.w);\nidlSplit = planes2D_high.x > planes2D_high.w && position3DLow.y < 0.0;\nidlSplitNewPlaneHiLow = vec2(WEST_MOST_X_HIGH - (EAST_MOST_X_HIGH - planes2D_high.x), WEST_MOST_X_LOW - (EAST_MOST_X_LOW - planes2D_low.x));\nplanes2D_high.x = czm_branchFreeTernary(idlSplit, idlSplitNewPlaneHiLow.x, planes2D_high.x);\nplanes2D_low.x = czm_branchFreeTernary(idlSplit, idlSplitNewPlaneHiLow.y, planes2D_low.x);
 			vec3 southWestCorner = (czm_modelViewRelativeToEye * czm_translateRelativeToEye(vec3(0.0, planes2D_high.xy), vec3(0.0, planes2D_low.xy))).xyz;\nvec3 northWestCorner = (czm_modelViewRelativeToEye * czm_translateRelativeToEye(vec3(0.0, planes2D_high.x, planes2D_high.z), vec3(0.0, planes2D_low.x, planes2D_low.z))).xyz;\nvec3 southEastCorner = (czm_modelViewRelativeToEye * czm_translateRelativeToEye(vec3(0.0, planes2D_high.w, planes2D_high.y), vec3(0.0, planes2D_low.w, planes2D_low.y))).xyz;\n#else \nvec3 southWestCorner = (czm_modelViewRelativeToEye * czm_translateRelativeToEye(czm_batchTable_southWest_HIGH(batchId), czm_batchTable_southWest_LOW(batchId))).xyz;\nvec3 northWestCorner = czm_normal * czm_batchTable_northward(batchId) + southWestCorner;\nvec3 southEastCorner = czm_normal * czm_batchTable_eastward(batchId) + southWestCorner;\n#endif \nvec3 eastWard = southEastCorner - southWestCorner;\nfloat eastExtent = length(eastWard);\neastWard /= eastExtent;\nvec3 northWard = northWestCorner - southWestCorner;\nfloat northExtent = length(northWard);\nnorthWard /= northExtent;\nv_westPlane = vec4(eastWard, -dot(eastWard, southWestCorner));\nv_southPlane = vec4(northWard, -dot(northWard, southWestCorner));\nv_inversePlaneExtents = vec2(1.0 / eastExtent, 1.0 / northExtent);\n#endif \nvec4 uvMinAndExtents = czm_batchTable_uvMinAndExtents(batchId);\nvec4 uMaxVmax = czm_batchTable_uMaxVmax(batchId);\nv_uMaxAndInverseDistance = vec3(uMaxVmax.xy, uvMinAndExtents.z);\nv_vMaxAndInverseDistance = vec3(uMaxVmax.zw, uvMinAndExtents.w);\nv_uvMinAndSphericalLongitudeRotation.xy = uvMinAndExtents.xy;\n#endif \n#ifdef PER_INSTANCE_COLOR\nv_color = czm_batchTable_color(batchId);\n#endif\ngl_Position = czm_depthClamp(czm_modelViewProjectionRelativeToEye * position);\n}\n\nvoid czm_non_compressed_main() \n{ \n    czm_non_distanceDisplayCondition_main(); \n    vec2 distanceDisplayCondition = czm_batchTable_distanceDisplayCondition(batchId);\n    vec3 boundingSphereCenter3DHigh = czm_batchTable_boundingSphereCenter3DHigh(batchId);\n    vec3 boundingSphereCenter3DLow = czm_batchTable_boundingSphereCenter3DLow(batchId);\n    float boundingSphereRadius = czm_batchTable_boundingSphereRadius(batchId);\n    vec3 boundingSphereCenter2DHigh = czm_batchTable_boundingSphereCenter2DHigh(batchId);\n    vec3 boundingSphereCenter2DLow = czm_batchTable_boundingSphereCenter2DLow(batchId);\n    vec4 centerRTE;\n    if (czm_morphTime == 1.0)\n    {\n        centerRTE = czm_translateRelativeToEye(boundingSphereCenter3DHigh, boundingSphereCenter3DLow);\n    }\n    else if (czm_morphTime == 0.0)\n    {\n        centerRTE = czm_translateRelativeToEye(boundingSphereCenter2DHigh.zxy, boundingSphereCenter2DLow.zxy);\n    }\n    else\n    {\n        centerRTE = czm_columbusViewMorph(\n                czm_translateRelativeToEye(boundingSphereCenter2DHigh.zxy, boundingSphereCenter2DLow.zxy),\n                czm_translateRelativeToEye(boundingSphereCenter3DHigh, boundingSphereCenter3DLow),\n                czm_morphTime);\n    }\n    float radiusSq = boundingSphereRadius * boundingSphereRadius; \n    float distanceSq; \n    if (czm_sceneMode == czm_sceneMode2D) \n    { \n        distanceSq = czm_eyeHeight2D.y - radiusSq; \n    } \n    else \n    { \n        distanceSq = dot(centerRTE.xyz, centerRTE.xyz) - radiusSq; \n    } \n    distanceSq = max(distanceSq, 0.0); \n    float nearSq = distanceDisplayCondition.x * distanceDisplayCondition.x; \n    float farSq = distanceDisplayCondition.y * distanceDisplayCondition.y; \n    float show = (distanceSq >= nearSq && distanceSq <= farSq) ? 1.0 : 0.0; \n    gl_Position *= show; \n}\nvec4 czm_computePosition()\n{\n    vec4 p;\n    if (czm_morphTime == 1.0)\n    {\n        p = czm_translateRelativeToEye(position3DHigh, position3DLow);\n    }\n    else if (czm_morphTime == 0.0)\n    {\n        p = czm_translateRelativeToEye(position2DHigh.zxy, position2DLow.zxy);\n    }\n    else\n    {\n        p = czm_columbusViewMorph(\n                czm_translateRelativeToEye(position2DHigh.zxy, position2DLow.zxy),\n                czm_translateRelativeToEye(position3DHigh, position3DLow),\n                czm_morphTime);\n    }\n    return p;\n}\n\n\nvoid czm_non_show_main() \n{ \n    extrudeDirection = czm_octDecode(compressedAttributes, 65535.0);\n    czm_non_compressed_main(); \n}\nvoid main() \n{ \n    czm_non_show_main(); \n    gl_Position *= czm_batchTable_show(batchId); \n}
 	`,
